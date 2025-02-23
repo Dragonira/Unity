@@ -1,20 +1,52 @@
+
 using UnityEngine;
+using TMPro;
+using System.Collections;
+
+
 
 public class PlayerController : MonoBehaviour
 {
+    [Header("Tmt")]
+    [SerializeField] private TextMeshProUGUI _textMeshPro;
+
+    [Header("Body")]
+    [SerializeField] private Rigidbody playerRigibody;
     [SerializeField] private Transform oritantionTransform;
-    [SerializeField] private KeyCode Jump;
-    [SerializeField] private float JumpForce;
-    private Rigidbody playerRigibody;
-    [SerializeField] private float movementSpeed;
-    private float horizontalInput, verticalInput;
-    private bool canJump;
-    [SerializeField] private float jumpCooldown;
-
     private Vector3 movementDirection;
+    public MovementState State;
 
+    [Header("Movement")]
+    private float horizontalInput, verticalInput;
+    [SerializeField] private float movementSpeed;
+    [SerializeField] private float walkSpeed;
+    [SerializeField] private float sprintSpeed;
+    [SerializeField] private float slideSpeed;
+    [SerializeField] private float desiredMoveSpeed;
+    [SerializeField] private float lastMoveSpeed;
+    public bool sliding;
+
+    [Header("Slope Handling")]
+    public float maxSlopeAngle;
+    private RaycastHit slopehit;
+    private bool exitingSlope;
+
+    [Header("KeyBinds")]
+    [SerializeField] private KeyCode Jump;
+    [SerializeField] private KeyCode Run;
+
+    [Header("Ground")]
     [SerializeField] private float playerHeight;
     [SerializeField] private LayerMask groundLayer;
+    [SerializeField] private float groundDrag;
+
+    [Header("Jump")]
+    private bool canJump;
+    [SerializeField] private float JumpForce;
+    [SerializeField] private float airMultiplier;
+    [SerializeField] private float jumpCooldown;
+ 
+   
 
     private void Awake()
     {
@@ -25,12 +57,14 @@ public class PlayerController : MonoBehaviour
     private void Update()
     {
         SetInputs();
-
+        SpeedControl();
+        Slippery();
+        StateHandler();
+     
     }
     private void FixedUpdate()
     {
         SetPlayerMovment();
-
     }
     private void SetInputs()
     {
@@ -41,17 +75,36 @@ public class PlayerController : MonoBehaviour
             canJump = false;
             SetPlayerJumping();
             Invoke(nameof(ResetJumping), jumpCooldown);
-
         }
-
     }
     private void SetPlayerMovment()
     {
         movementDirection = oritantionTransform.forward * verticalInput + oritantionTransform.right * horizontalInput;
-        playerRigibody.AddForce(movementDirection.normalized * movementSpeed, ForceMode.Force);
+
+
+
+        if (OnSlope() && !exitingSlope)
+        {
+            playerRigibody.AddForce(GetSlopeMoveDirection(movementDirection) * movementSpeed*20f,ForceMode.Force);
+
+            if (playerRigibody.linearVelocity.y > 0)
+                playerRigibody.AddForce(Vector3.down*80f,ForceMode.Force);
+        }
+
+        if (isGrounded())
+        {
+            playerRigibody.AddForce(movementDirection.normalized * movementSpeed * 10F, ForceMode.Force);
+        }
+        else if (!isGrounded())
+        {
+            playerRigibody.AddForce(movementDirection.normalized * movementSpeed * 10f * airMultiplier, ForceMode.Force);
+        }
+
+        playerRigibody.useGravity = !OnSlope();
     }
     private void SetPlayerJumping()
     {
+        exitingSlope = true;
         playerRigibody.linearVelocity = new Vector3(playerRigibody.linearVelocity.x, 0f, playerRigibody.linearVelocity.z);
         playerRigibody.AddForce(transform.up * JumpForce, ForceMode.Impulse);
     }
@@ -59,13 +112,114 @@ public class PlayerController : MonoBehaviour
     private void ResetJumping()
     {
         canJump = true;
+        exitingSlope = false;
 
     }
     private bool isGrounded()
     {
         return
-            Physics.Raycast(transform.position, Vector3.down, playerHeight * 1 + 1, groundLayer);
+            Physics.Raycast(transform.position, Vector3.down, playerHeight * 0.7f + 0.3f, groundLayer);
 
+    }
+    private void SpeedControl()
+    {
+        if (OnSlope()&&!exitingSlope)
+        {
+            if (playerRigibody.linearVelocity.magnitude > movementSpeed)
+                playerRigibody.linearVelocity = playerRigibody.linearVelocity.normalized * movementSpeed;
+        }
+        else
+        {
+            Vector3 flatVel = new Vector3(playerRigibody.linearVelocity.x, 0f, playerRigibody.linearVelocity.z);
+
+            if (flatVel.magnitude > movementSpeed)
+            {
+                Vector3 limitedVel = flatVel.normalized * movementSpeed;
+                playerRigibody.linearVelocity = new Vector3(limitedVel.x, playerRigibody.linearVelocity.y, limitedVel.z);
+            }
+            _textMeshPro.SetText("Speed: " + flatVel.magnitude);
+        }
+    }
+
+    private void Slippery()
+    {
+        if (isGrounded())
+            playerRigibody.linearDamping = groundDrag;
+        else
+            playerRigibody.linearDamping = 0;
+
+    }
+
+    private void StateHandler()
+    {
+        if (sliding)
+        {
+            State = MovementState.sliding;
+            if(OnSlope()&&playerRigibody.linearVelocity.y <0.1f)
+                desiredMoveSpeed=slideSpeed;
+            else
+                desiredMoveSpeed = sprintSpeed;
+        }
+        else if(isGrounded()&&Input.GetKey(Run))
+        {
+           State = MovementState.sprinting;
+            desiredMoveSpeed = sprintSpeed;
+        }
+       else if (isGrounded())
+        {
+            State = MovementState.walking;
+            desiredMoveSpeed = walkSpeed;
+        }
+        else 
+        {
+            State = MovementState.air;
+
+        }
+        if(Mathf.Abs(desiredMoveSpeed - lastMoveSpeed)>4f&&movementSpeed !=0)
+        {
+            StopAllCoroutines();
+            StartCoroutine(SmoothlyLerpMoveSpeed());
+        }
+        else
+        {
+            movementSpeed = desiredMoveSpeed;
+        }
+        lastMoveSpeed = desiredMoveSpeed;
+    }
+    public enum MovementState
+    {
+        walking,
+        sprinting,
+        air,
+        sliding,
+    }
+   
+   public bool OnSlope()
+    {
+        if(Physics.Raycast(transform.position,Vector3.down, out slopehit,playerHeight* 0.5f + 0.3f))
+        {
+            float angle = Vector3.Angle(Vector3.up,slopehit.normal);
+            return angle < maxSlopeAngle && angle != 0;
+        }
+        return false;
+    }
+    public Vector3 GetSlopeMoveDirection(Vector3 direction)
+    {
+        return Vector3.ProjectOnPlane(direction,slopehit.normal).normalized;
+    }
+
+    private IEnumerator SmoothlyLerpMoveSpeed()
+    {
+        float time = 0;
+        float difference = Mathf.Abs(desiredMoveSpeed -movementSpeed);
+        float startValue = movementSpeed;
+        while (time < difference)
+        {
+            movementSpeed = Mathf.Lerp(startValue,desiredMoveSpeed,time/difference);
+            time += Time.deltaTime;
+            yield return null;
+        }
+        movementSpeed = desiredMoveSpeed;
     }
 }
 
