@@ -2,6 +2,7 @@
 using UnityEngine;
 using TMPro;
 using System.Collections;
+using System;
 
 
 
@@ -22,8 +23,11 @@ public class PlayerController : MonoBehaviour
     [SerializeField] private float walkSpeed;
     [SerializeField] private float sprintSpeed;
     [SerializeField] private float slideSpeed;
+
     [SerializeField] private float desiredMoveSpeed;
-    [SerializeField] private float lastMoveSpeed;
+    [SerializeField] private float lastDesiredMoveSpeed;
+
+
     public bool sliding;
 
     [Header("Slope Handling")]
@@ -45,8 +49,8 @@ public class PlayerController : MonoBehaviour
     [SerializeField] private float JumpForce;
     [SerializeField] private float airMultiplier;
     [SerializeField] private float jumpCooldown;
- 
-   
+
+
 
     private void Awake()
     {
@@ -57,10 +61,9 @@ public class PlayerController : MonoBehaviour
     private void Update()
     {
         SetInputs();
-        SpeedControl();
         Slippery();
         StateHandler();
-     
+
     }
     private void FixedUpdate()
     {
@@ -81,26 +84,27 @@ public class PlayerController : MonoBehaviour
     {
         movementDirection = oritantionTransform.forward * verticalInput + oritantionTransform.right * horizontalInput;
 
-
-
-        if (OnSlope() && !exitingSlope)
+        if (OnSlope()&&!exitingSlope)
         {
-            playerRigibody.AddForce(GetSlopeMoveDirection(movementDirection) * movementSpeed*20f,ForceMode.Force);
+            playerRigibody.AddForce(GetSlopeMoveDirection(movementDirection) * movementSpeed * 10f, ForceMode.Force);
 
             if (playerRigibody.linearVelocity.y > 0)
-                playerRigibody.AddForce(Vector3.down*80f,ForceMode.Force);
+            {
+                playerRigibody.AddForce(Vector3.down * 80f, ForceMode.Force);
+            }
         }
-
-        if (isGrounded())
+        else if (isGrounded())
         {
-            playerRigibody.AddForce(movementDirection.normalized * movementSpeed * 10F, ForceMode.Force);
+            playerRigibody.AddForce(movementDirection.normalized * movementSpeed * 10f, ForceMode.Force);
         }
         else if (!isGrounded())
         {
-            playerRigibody.AddForce(movementDirection.normalized * movementSpeed * 10f * airMultiplier, ForceMode.Force);
+            playerRigibody.AddForce(movementDirection.normalized * movementSpeed * airMultiplier, ForceMode.Force);
         }
 
+       
         playerRigibody.useGravity = !OnSlope();
+
     }
     private void SetPlayerJumping()
     {
@@ -118,28 +122,10 @@ public class PlayerController : MonoBehaviour
     private bool isGrounded()
     {
         return
-            Physics.Raycast(transform.position, Vector3.down, playerHeight * 0.7f + 0.3f, groundLayer);
+            Physics.Raycast(transform.position, Vector3.down, playerHeight * 0.5f + 0.2f, groundLayer);
 
     }
-    private void SpeedControl()
-    {
-        if (OnSlope()&&!exitingSlope)
-        {
-            if (playerRigibody.linearVelocity.magnitude > movementSpeed)
-                playerRigibody.linearVelocity = playerRigibody.linearVelocity.normalized * movementSpeed;
-        }
-        else
-        {
-            Vector3 flatVel = new Vector3(playerRigibody.linearVelocity.x, 0f, playerRigibody.linearVelocity.z);
 
-            if (flatVel.magnitude > movementSpeed)
-            {
-                Vector3 limitedVel = flatVel.normalized * movementSpeed;
-                playerRigibody.linearVelocity = new Vector3(limitedVel.x, playerRigibody.linearVelocity.y, limitedVel.z);
-            }
-            _textMeshPro.SetText("Speed: " + flatVel.magnitude);
-        }
-    }
 
     private void Slippery()
     {
@@ -155,36 +141,35 @@ public class PlayerController : MonoBehaviour
         if (sliding)
         {
             State = MovementState.sliding;
-            if(OnSlope()&&playerRigibody.linearVelocity.y <0.1f)
-                desiredMoveSpeed=slideSpeed;
+            if (OnSlope() && playerRigibody.linearVelocity.y < 0.1f)
+                desiredMoveSpeed = slideSpeed;
             else
                 desiredMoveSpeed = sprintSpeed;
         }
-        else if(isGrounded()&&Input.GetKey(Run))
+        
+
+        else if (isGrounded() && Input.GetKey(Run))
         {
-           State = MovementState.sprinting;
-            desiredMoveSpeed = sprintSpeed;
+            State = MovementState.sprinting;
+            desiredMoveSpeed= sprintSpeed;
         }
-       else if (isGrounded())
+        else if (isGrounded())
         {
             State = MovementState.walking;
             desiredMoveSpeed = walkSpeed;
         }
-        else 
+        else
         {
             State = MovementState.air;
 
         }
-        if(Mathf.Abs(desiredMoveSpeed - lastMoveSpeed)>4f&&movementSpeed !=0)
+        if (Mathf.Abs(desiredMoveSpeed - lastDesiredMoveSpeed) > 2f && movementSpeed != 0)
         {
             StopAllCoroutines();
             StartCoroutine(SmoothlyLerpMoveSpeed());
         }
-        else
-        {
-            movementSpeed = desiredMoveSpeed;
-        }
-        lastMoveSpeed = desiredMoveSpeed;
+        else {movementSpeed = desiredMoveSpeed; }
+        lastDesiredMoveSpeed = desiredMoveSpeed;
     }
     public enum MovementState
     {
@@ -193,33 +178,53 @@ public class PlayerController : MonoBehaviour
         air,
         sliding,
     }
-   
-   public bool OnSlope()
+
+    public bool OnSlope()
     {
-        if(Physics.Raycast(transform.position,Vector3.down, out slopehit,playerHeight* 0.5f + 0.3f))
+        if (Physics.Raycast(transform.position, Vector3.down, out slopehit, playerHeight * 0.5f + 0.3f))
         {
-            float angle = Vector3.Angle(Vector3.up,slopehit.normal);
+            float angle = Vector3.Angle(Vector3.up, slopehit.normal);
             return angle < maxSlopeAngle && angle != 0;
         }
         return false;
     }
+
     public Vector3 GetSlopeMoveDirection(Vector3 direction)
-    {
-        return Vector3.ProjectOnPlane(direction,slopehit.normal).normalized;
+    {return Vector3.ProjectOnPlane(direction,slopehit.normal).normalized;
     }
 
+    private void SpeedControl()
+    {
+        if (OnSlope() && !exitingSlope)
+        {
+            if (playerRigibody.linearVelocity.magnitude > movementSpeed)
+                playerRigibody.linearVelocity = playerRigibody.linearVelocity.normalized * movementSpeed;
+        }
+        else 
+        { 
+
+                Vector3 flatvel = new Vector3(playerRigibody.linearVelocity.x,0f,playerRigibody.linearVelocity.z);
+        if(flatvel.magnitude >movementSpeed)
+        {
+            Vector3 limitedVel = flatvel.normalized*movementSpeed;
+            playerRigibody.linearVelocity = new Vector3(limitedVel.x,playerRigibody.linearVelocity.y,limitedVel.z);
+        }
+         }
+        _textMeshPro.text = desiredMoveSpeed.ToString();
+    }
     private IEnumerator SmoothlyLerpMoveSpeed()
     {
-        float time = 0;
+        float time =  0;
         float difference = Mathf.Abs(desiredMoveSpeed -movementSpeed);
         float startValue = movementSpeed;
-        while (time < difference)
+        while (time<difference)
         {
             movementSpeed = Mathf.Lerp(startValue,desiredMoveSpeed,time/difference);
             time += Time.deltaTime;
-            yield return null;
+            yield return null;    
         }
         movementSpeed = desiredMoveSpeed;
     }
+
 }
 

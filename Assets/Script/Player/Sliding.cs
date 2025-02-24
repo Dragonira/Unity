@@ -17,7 +17,7 @@ public class Sliding : MonoBehaviour
     [SerializeField] private KeyCode slideKey;
     private float horizontalInput;
     private float verticalInput;
- 
+    private bool sliding;
 
     private void Update()
     {
