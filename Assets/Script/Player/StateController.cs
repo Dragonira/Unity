@@ -2,9 +2,9 @@ using UnityEngine;
 
 public class StateController : MonoBehaviour
 {
-    private MovmentsState currentPlayer = MovmentsState.walking;
+    private PlayerState currentPlayer = PlayerState.idle;
 
-    public void ChangeState(MovmentsState movmentsState)
+    public void ChangeState(PlayerState movmentsState)
     {
         if (currentPlayer == movmentsState)
         {
@@ -13,7 +13,7 @@ public class StateController : MonoBehaviour
           currentPlayer = movmentsState; 
     }
 
-    public MovmentsState GetMovmentsState()
+    public PlayerState GetCurrentState()
     {
         return currentPlayer;
     }
